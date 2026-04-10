@@ -440,7 +440,14 @@ export class PrintifyAPI {
       return await this.client.orders.submit(orderData);
     } catch (error) {
       console.error('Error submitting order:', error);
-      throw this.enhanceError(error, orderData);
+      // Redact PII from error context — only pass non-sensitive metadata
+      throw this.enhanceError(error, {
+        external_id: orderData?.external_id,
+        lineItemCount: Array.isArray(orderData?.line_items) ? orderData.line_items.length : 0,
+        shipping_method: orderData?.shipping_method,
+        country: orderData?.address_to?.country,
+        region: orderData?.address_to?.region
+      });
     }
   }
 
@@ -468,7 +475,12 @@ export class PrintifyAPI {
       return await this.client.orders.calculateShipping(shippingData);
     } catch (error) {
       console.error('Error calculating shipping:', error);
-      throw this.enhanceError(error, shippingData);
+      // Redact PII from error context — only pass non-sensitive metadata
+      throw this.enhanceError(error, {
+        lineItemCount: Array.isArray(shippingData?.line_items) ? shippingData.line_items.length : 0,
+        country: shippingData?.address_to?.country,
+        region: shippingData?.address_to?.region
+      });
     }
   }
 
