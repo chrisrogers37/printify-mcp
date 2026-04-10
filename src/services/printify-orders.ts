@@ -1,6 +1,8 @@
 import { PrintifyAPI } from '../printify-api.js';
 import { formatErrorResponse, formatSuccessResponse } from '../utils/error-handler.js';
 
+const SHOP_NOT_SELECTED_ERROR = 'No shop is currently selected. Use the list_shops and switch_shop tools to select a shop.';
+
 /**
  * List orders from Printify
  */
@@ -8,7 +10,7 @@ export async function listOrders(printifyClient: PrintifyAPI, options: { page?: 
   try {
     const currentShop = printifyClient.getCurrentShop();
     if (!currentShop) {
-      throw new Error('No shop is currently selected. Use the list-shops and switch-shop tools to select a shop.');
+      throw new Error(SHOP_NOT_SELECTED_ERROR);
     }
 
     // Printify API caps limit at 10 per page
@@ -23,6 +25,7 @@ export async function listOrders(printifyClient: PrintifyAPI, options: { page?: 
       success: true,
       orders,
       response: formatSuccessResponse('Orders Retrieved Successfully', {
+        Orders: orders,
         Count: orders?.data?.length ?? 0,
         Page: sanitizedOptions.page || 1,
         Limit: sanitizedOptions.limit,
@@ -54,7 +57,7 @@ export async function getOrder(printifyClient: PrintifyAPI, orderId: string) {
   try {
     const currentShop = printifyClient.getCurrentShop();
     if (!currentShop) {
-      throw new Error('No shop is currently selected. Use the list-shops and switch-shop tools to select a shop.');
+      throw new Error(SHOP_NOT_SELECTED_ERROR);
     }
 
     const order = await printifyClient.getOrder(orderId);
@@ -63,6 +66,7 @@ export async function getOrder(printifyClient: PrintifyAPI, orderId: string) {
       success: true,
       order,
       response: formatSuccessResponse('Order Retrieved Successfully', {
+        Order: order,
         OrderId: orderId,
         Status: order?.status,
         Shop: currentShop
@@ -92,7 +96,7 @@ export async function sendToProduction(printifyClient: PrintifyAPI, orderId: str
   try {
     const currentShop = printifyClient.getCurrentShop();
     if (!currentShop) {
-      throw new Error('No shop is currently selected. Use the list-shops and switch-shop tools to select a shop.');
+      throw new Error(SHOP_NOT_SELECTED_ERROR);
     }
 
     const result = await printifyClient.sendOrderToProduction(orderId);
@@ -129,7 +133,7 @@ export async function calculateShipping(printifyClient: PrintifyAPI, shippingDat
   try {
     const currentShop = printifyClient.getCurrentShop();
     if (!currentShop) {
-      throw new Error('No shop is currently selected. Use the list-shops and switch-shop tools to select a shop.');
+      throw new Error(SHOP_NOT_SELECTED_ERROR);
     }
 
     const result = await printifyClient.calculateShipping(shippingData);
@@ -138,6 +142,7 @@ export async function calculateShipping(printifyClient: PrintifyAPI, shippingDat
       success: true,
       result,
       response: formatSuccessResponse('Shipping Calculated Successfully', {
+        Rates: result,
         Shop: currentShop
       })
     };
@@ -164,7 +169,7 @@ export async function submitOrder(printifyClient: PrintifyAPI, orderData: any) {
   try {
     const currentShop = printifyClient.getCurrentShop();
     if (!currentShop) {
-      throw new Error('No shop is currently selected. Use the list-shops and switch-shop tools to select a shop.');
+      throw new Error(SHOP_NOT_SELECTED_ERROR);
     }
 
     const result = await printifyClient.submitOrder(orderData);
@@ -173,6 +178,7 @@ export async function submitOrder(printifyClient: PrintifyAPI, orderData: any) {
       success: true,
       result,
       response: formatSuccessResponse('Order Submitted Successfully', {
+        Order: result,
         OrderId: result?.id,
         Shop: currentShop
       })
@@ -201,7 +207,7 @@ export async function cancelOrder(printifyClient: PrintifyAPI, orderId: string) 
   try {
     const currentShop = printifyClient.getCurrentShop();
     if (!currentShop) {
-      throw new Error('No shop is currently selected. Use the list-shops and switch-shop tools to select a shop.');
+      throw new Error(SHOP_NOT_SELECTED_ERROR);
     }
 
     const result = await printifyClient.cancelOrder(orderId);

@@ -1434,9 +1434,12 @@ server.tool(
 server.tool(
   "list_orders",
   {
-    page: z.number().optional().default(1).describe("Page number"),
-    limit: z.number().optional().default(10).describe("Number of orders per page (max 10)"),
-    status: z.string().optional().describe("Filter by order status: pending, on-hold, sending-to-production, in-production, canceled, fulfilled, partially-fulfilled, payment-not-received, has-issues"),
+    page: z.number().int().min(1).optional().default(1).describe("Page number"),
+    limit: z.number().int().min(1).max(10).optional().default(10).describe("Number of orders per page (max 10)"),
+    status: z.enum([
+      "pending", "on-hold", "sending-to-production", "in-production",
+      "canceled", "fulfilled", "partially-fulfilled", "payment-not-received", "has-issues"
+    ]).optional().describe("Filter by order status"),
     sku: z.string().optional().describe("Filter by product SKU")
   },
   async ({ page, limit, status, sku }): Promise<{ content: any[], isError?: boolean }> => {
@@ -1469,16 +1472,16 @@ server.tool(
     label: z.string().optional().describe("Order label/name for display"),
     line_items: z.array(z.object({
       product_id: z.string().describe("Printify product ID"),
-      variant_id: z.number().describe("Variant ID"),
-      quantity: z.number().describe("Quantity")
-    })).describe("Line items for the order"),
-    shipping_method: z.number().describe("Shipping method: 1=standard, 2=priority, 3=express, 4=economy"),
+      variant_id: z.number().int().positive().describe("Variant ID"),
+      quantity: z.number().int().positive().describe("Quantity")
+    })).min(1).describe("Line items for the order"),
+    shipping_method: z.number().int().min(1).max(4).describe("Shipping method: 1=standard, 2=priority, 3=express, 4=economy"),
     address_to: z.object({
       first_name: z.string().describe("First name"),
       last_name: z.string().describe("Last name"),
-      email: z.string().describe("Email address"),
+      email: z.string().email().describe("Email address"),
       phone: z.string().optional().describe("Phone number"),
-      country: z.string().describe("Country code (e.g., US)"),
+      country: z.string().length(2).describe("Country code (e.g., US)"),
       region: z.string().optional().describe("State/region code"),
       address1: z.string().describe("Street address"),
       address2: z.string().optional().describe("Apartment, suite, etc."),
@@ -1578,14 +1581,14 @@ server.tool(
   {
     line_items: z.array(z.object({
       product_id: z.string().describe("Printify product ID"),
-      variant_id: z.number().describe("Variant ID"),
-      quantity: z.number().describe("Quantity")
-    })).describe("Line items to calculate shipping for"),
+      variant_id: z.number().int().positive().describe("Variant ID"),
+      quantity: z.number().int().positive().describe("Quantity")
+    })).min(1).describe("Line items to calculate shipping for"),
     address_to: z.object({
       first_name: z.string().describe("First name"),
       last_name: z.string().describe("Last name"),
-      email: z.string().describe("Email address"),
-      country: z.string().describe("Country code (e.g., US)"),
+      email: z.string().email().describe("Email address"),
+      country: z.string().length(2).describe("Country code (e.g., US)"),
       region: z.string().optional().describe("State/region code"),
       address1: z.string().describe("Street address"),
       city: z.string().describe("City"),
