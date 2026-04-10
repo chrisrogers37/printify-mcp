@@ -401,6 +401,77 @@ export class PrintifyAPI {
     }
   }
 
+  // List orders
+  async getOrders(options: { page?: number; limit?: number; status?: string; sku?: string } = {}) {
+    if (!this.shopId) {
+      throw new Error('Shop ID is not set. Call setShopId() first.');
+    }
+
+    try {
+      console.log(`Fetching orders for shop ${this.shopId}`);
+      return await this.client.orders.list(options);
+    } catch (error) {
+      console.error('Error fetching orders:', error);
+      throw error;
+    }
+  }
+
+  // Get a specific order
+  async getOrder(orderId: string) {
+    if (!this.shopId) {
+      throw new Error('Shop ID is not set. Call setShopId() first.');
+    }
+
+    try {
+      return await this.client.orders.getOne(orderId);
+    } catch (error) {
+      console.error(`Error fetching order ${orderId}:`, error);
+      throw error;
+    }
+  }
+
+  // Send an order to production
+  async sendOrderToProduction(orderId: string) {
+    if (!this.shopId) {
+      throw new Error('Shop ID is not set. Call setShopId() first.');
+    }
+
+    try {
+      return await this.client.orders.sendToProduction(orderId);
+    } catch (error) {
+      console.error(`Error sending order ${orderId} to production:`, error);
+      throw this.enhanceError(error);
+    }
+  }
+
+  // Calculate shipping for an order
+  async calculateShipping(shippingData: any) {
+    if (!this.shopId) {
+      throw new Error('Shop ID is not set. Call setShopId() first.');
+    }
+
+    try {
+      return await this.client.orders.calculateShipping(shippingData);
+    } catch (error) {
+      console.error('Error calculating shipping:', error);
+      throw this.enhanceError(error, shippingData);
+    }
+  }
+
+  // Cancel an unpaid order
+  async cancelOrder(orderId: string) {
+    if (!this.shopId) {
+      throw new Error('Shop ID is not set. Call setShopId() first.');
+    }
+
+    try {
+      return await this.client.orders.cancelUnpaid(orderId);
+    } catch (error) {
+      console.error(`Error canceling order ${orderId}:`, error);
+      throw this.enhanceError(error);
+    }
+  }
+
   // Get catalog blueprints
   async getBlueprints() {
     try {
