@@ -11,16 +11,22 @@ export async function listOrders(printifyClient: PrintifyAPI, options: { page?: 
       throw new Error('No shop is currently selected. Use the list-shops and switch-shop tools to select a shop.');
     }
 
-    const orders = await printifyClient.getOrders(options);
+    // Printify API caps limit at 10 per page
+    const sanitizedOptions = {
+      ...options,
+      limit: Math.min(options.limit || 10, 10)
+    };
+
+    const orders = await printifyClient.getOrders(sanitizedOptions);
 
     return {
       success: true,
       orders,
       response: formatSuccessResponse('Orders Retrieved Successfully', {
         Count: orders?.data?.length ?? 0,
-        Page: options.page || 1,
-        Limit: options.limit || 10,
-        Status: options.status || 'all',
+        Page: sanitizedOptions.page || 1,
+        Limit: sanitizedOptions.limit,
+        Status: sanitizedOptions.status || 'all',
         Shop: currentShop
       })
     };
@@ -152,7 +158,44 @@ export async function calculateShipping(printifyClient: PrintifyAPI, shippingDat
 }
 
 /**
- * Cancel an unpaid order
+ * Submit a new order
+ */
+export async function submitOrder(printifyClient: PrintifyAPI, orderData: any) {
+  try {
+    const currentShop = printifyClient.getCurrentShop();
+    if (!currentShop) {
+      throw new Error('No shop is currently selected. Use the list-shops and switch-shop tools to select a shop.');
+    }
+
+    const result = await printifyClient.submitOrder(orderData);
+
+    return {
+      success: true,
+      result,
+      response: formatSuccessResponse('Order Submitted Successfully', {
+        OrderId: result?.id,
+        Shop: currentShop
+      })
+    };
+  } catch (error) {
+    console.error('Error submitting order:', error);
+    return {
+      success: false,
+      error,
+      errorResponse: formatErrorResponse(error as Error, 'Submit Order', {
+        Shop: printifyClient.getCurrentShop()
+      }, [
+        'Check that the order data is valid',
+        'Ensure line_items include valid product_id, variant_id, and quantity',
+        'Ensure address_to includes all required fields',
+        'Make sure you have selected a shop'
+      ])
+    };
+  }
+}
+
+/**
+ * Cancel an order (only orders with status on-hold or payment-not-received)
  */
 export async function cancelOrder(printifyClient: PrintifyAPI, orderId: string) {
   try {
@@ -181,7 +224,7 @@ export async function cancelOrder(printifyClient: PrintifyAPI, orderId: string) 
         Shop: printifyClient.getCurrentShop()
       }, [
         'Check that the order ID is valid',
-        'Only unpaid orders can be cancelled via API',
+        'Only orders with status on-hold or payment-not-received can be cancelled',
         'Make sure you have selected a shop'
       ])
     };
