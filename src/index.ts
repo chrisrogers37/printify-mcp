@@ -17,6 +17,7 @@ export { createPrintifyMcpServer } from './exports.js';
 export * from './services/image-generator.js';
 export * from './services/printify-uploader.js';
 export * from './services/printify-products.js';
+export * from './services/printify-orders.js';
 export * from './utils/error-handler.js';
 export * from './utils/file-utils.js';
 
@@ -1425,6 +1426,163 @@ server.tool(
         }],
         isError: true
       };
+    }
+  }
+);
+
+// List orders tool
+server.tool(
+  "list_orders",
+  {
+    page: z.number().optional().default(1).describe("Page number"),
+    limit: z.number().optional().default(10).describe("Number of orders per page"),
+    status: z.string().optional().describe("Filter by order status (e.g., 'fulfilled', 'unfulfilled', 'canceled')"),
+    sku: z.string().optional().describe("Filter by product SKU")
+  },
+  async ({ page, limit, status, sku }): Promise<{ content: any[], isError?: boolean }> => {
+    const { listOrders } = await import('./services/printify-orders.js');
+
+    if (!printifyClient) {
+      return {
+        content: [{
+          type: "text",
+          text: "Printify API client is not initialized. The PRINTIFY_API_KEY environment variable may not be set."
+        }],
+        isError: true
+      };
+    }
+
+    const result = await listOrders(printifyClient, { page, limit, status, sku });
+    if (result.success) {
+      return result.response as { content: any[], isError?: boolean };
+    } else {
+      return result.errorResponse as { content: any[], isError: boolean };
+    }
+  }
+);
+
+// Get order tool
+server.tool(
+  "get_order",
+  {
+    orderId: z.string().describe("The Printify order ID")
+  },
+  async ({ orderId }): Promise<{ content: any[], isError?: boolean }> => {
+    const { getOrder } = await import('./services/printify-orders.js');
+
+    if (!printifyClient) {
+      return {
+        content: [{
+          type: "text",
+          text: "Printify API client is not initialized. The PRINTIFY_API_KEY environment variable may not be set."
+        }],
+        isError: true
+      };
+    }
+
+    const result = await getOrder(printifyClient, orderId);
+    if (result.success) {
+      return result.response as { content: any[], isError?: boolean };
+    } else {
+      return result.errorResponse as { content: any[], isError: boolean };
+    }
+  }
+);
+
+// Send order to production tool
+server.tool(
+  "send_order_to_production",
+  {
+    orderId: z.string().describe("The Printify order ID to send to production")
+  },
+  async ({ orderId }): Promise<{ content: any[], isError?: boolean }> => {
+    const { sendToProduction } = await import('./services/printify-orders.js');
+
+    if (!printifyClient) {
+      return {
+        content: [{
+          type: "text",
+          text: "Printify API client is not initialized. The PRINTIFY_API_KEY environment variable may not be set."
+        }],
+        isError: true
+      };
+    }
+
+    const result = await sendToProduction(printifyClient, orderId);
+    if (result.success) {
+      return result.response as { content: any[], isError?: boolean };
+    } else {
+      return result.errorResponse as { content: any[], isError: boolean };
+    }
+  }
+);
+
+// Calculate shipping tool
+server.tool(
+  "calculate_shipping",
+  {
+    line_items: z.array(z.object({
+      product_id: z.string().describe("Printify product ID"),
+      variant_id: z.number().describe("Variant ID"),
+      quantity: z.number().describe("Quantity")
+    })).describe("Line items to calculate shipping for"),
+    address_to: z.object({
+      first_name: z.string().describe("First name"),
+      last_name: z.string().describe("Last name"),
+      email: z.string().describe("Email address"),
+      country: z.string().describe("Country code (e.g., US)"),
+      region: z.string().optional().describe("State/region code"),
+      address1: z.string().describe("Street address"),
+      city: z.string().describe("City"),
+      zip: z.string().describe("ZIP/postal code")
+    }).describe("Shipping destination address")
+  },
+  async ({ line_items, address_to }): Promise<{ content: any[], isError?: boolean }> => {
+    const { calculateShipping } = await import('./services/printify-orders.js');
+
+    if (!printifyClient) {
+      return {
+        content: [{
+          type: "text",
+          text: "Printify API client is not initialized. The PRINTIFY_API_KEY environment variable may not be set."
+        }],
+        isError: true
+      };
+    }
+
+    const result = await calculateShipping(printifyClient, { line_items, address_to });
+    if (result.success) {
+      return result.response as { content: any[], isError?: boolean };
+    } else {
+      return result.errorResponse as { content: any[], isError: boolean };
+    }
+  }
+);
+
+// Cancel order tool
+server.tool(
+  "cancel_order",
+  {
+    orderId: z.string().describe("The Printify order ID to cancel (only unpaid orders can be cancelled)")
+  },
+  async ({ orderId }): Promise<{ content: any[], isError?: boolean }> => {
+    const { cancelOrder } = await import('./services/printify-orders.js');
+
+    if (!printifyClient) {
+      return {
+        content: [{
+          type: "text",
+          text: "Printify API client is not initialized. The PRINTIFY_API_KEY environment variable may not be set."
+        }],
+        isError: true
+      };
+    }
+
+    const result = await cancelOrder(printifyClient, orderId);
+    if (result.success) {
+      return result.response as { content: any[], isError?: boolean };
+    } else {
+      return result.errorResponse as { content: any[], isError: boolean };
     }
   }
 );
