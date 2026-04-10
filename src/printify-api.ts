@@ -430,6 +430,20 @@ export class PrintifyAPI {
     }
   }
 
+  // Submit a new order
+  async submitOrder(orderData: any) {
+    if (!this.shopId) {
+      throw new Error('Shop ID is not set. Call setShopId() first.');
+    }
+
+    try {
+      return await this.client.orders.submit(orderData);
+    } catch (error) {
+      console.error('Error submitting order:', error);
+      throw this.enhanceError(error, orderData);
+    }
+  }
+
   // Send an order to production
   async sendOrderToProduction(orderId: string) {
     if (!this.shopId) {

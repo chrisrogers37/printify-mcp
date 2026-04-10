@@ -1435,8 +1435,8 @@ server.tool(
   "list_orders",
   {
     page: z.number().optional().default(1).describe("Page number"),
-    limit: z.number().optional().default(10).describe("Number of orders per page"),
-    status: z.string().optional().describe("Filter by order status (e.g., 'fulfilled', 'unfulfilled', 'canceled')"),
+    limit: z.number().optional().default(10).describe("Number of orders per page (max 10)"),
+    status: z.string().optional().describe("Filter by order status: pending, on-hold, sending-to-production, in-production, canceled, fulfilled, partially-fulfilled, payment-not-received, has-issues"),
     sku: z.string().optional().describe("Filter by product SKU")
   },
   async ({ page, limit, status, sku }): Promise<{ content: any[], isError?: boolean }> => {
@@ -1453,6 +1453,61 @@ server.tool(
     }
 
     const result = await listOrders(printifyClient, { page, limit, status, sku });
+    if (result.success) {
+      return result.response as { content: any[], isError?: boolean };
+    } else {
+      return result.errorResponse as { content: any[], isError: boolean };
+    }
+  }
+);
+
+// Submit order tool
+server.tool(
+  "submit_order",
+  {
+    external_id: z.string().optional().describe("Your external order ID for reference"),
+    label: z.string().optional().describe("Order label/name for display"),
+    line_items: z.array(z.object({
+      product_id: z.string().describe("Printify product ID"),
+      variant_id: z.number().describe("Variant ID"),
+      quantity: z.number().describe("Quantity")
+    })).describe("Line items for the order"),
+    shipping_method: z.number().describe("Shipping method: 1=standard, 2=priority, 3=express, 4=economy"),
+    address_to: z.object({
+      first_name: z.string().describe("First name"),
+      last_name: z.string().describe("Last name"),
+      email: z.string().describe("Email address"),
+      phone: z.string().optional().describe("Phone number"),
+      country: z.string().describe("Country code (e.g., US)"),
+      region: z.string().optional().describe("State/region code"),
+      address1: z.string().describe("Street address"),
+      address2: z.string().optional().describe("Apartment, suite, etc."),
+      city: z.string().describe("City"),
+      zip: z.string().describe("ZIP/postal code")
+    }).describe("Shipping destination address"),
+    send_shipping_notification: z.boolean().optional().default(false).describe("Whether to send shipping notification to customer")
+  },
+  async ({ external_id, label, line_items, shipping_method, address_to, send_shipping_notification }): Promise<{ content: any[], isError?: boolean }> => {
+    const { submitOrder } = await import('./services/printify-orders.js');
+
+    if (!printifyClient) {
+      return {
+        content: [{
+          type: "text",
+          text: "Printify API client is not initialized. The PRINTIFY_API_KEY environment variable may not be set."
+        }],
+        isError: true
+      };
+    }
+
+    const result = await submitOrder(printifyClient, {
+      external_id,
+      label,
+      line_items,
+      shipping_method,
+      address_to,
+      send_shipping_notification
+    });
     if (result.success) {
       return result.response as { content: any[], isError?: boolean };
     } else {
@@ -1563,7 +1618,7 @@ server.tool(
 server.tool(
   "cancel_order",
   {
-    orderId: z.string().describe("The Printify order ID to cancel (only unpaid orders can be cancelled)")
+    orderId: z.string().describe("The Printify order ID to cancel (only orders with status on-hold or payment-not-received can be cancelled)")
   },
   async ({ orderId }): Promise<{ content: any[], isError?: boolean }> => {
     const { cancelOrder } = await import('./services/printify-orders.js');
