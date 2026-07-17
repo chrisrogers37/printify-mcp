@@ -10,16 +10,33 @@ export interface PrintifyShop {
   sales_channel: string;
 }
 
+// Cap on a single retry backoff sleep, so a large retryAttempts can't schedule a
+// pathologically long delay (e.g. attempt 8 would otherwise be 64s).
+const MAX_RETRY_DELAY_MS = 30_000;
+
 // Printify API client
 export class PrintifyAPI {
   private client: any;
   private apiToken: string;
   private shopId: string | null = null;
   private shops: PrintifyShop[] = [];
+  // True only after a real Printify API call has actually succeeded. Never set
+  // optimistically — this backs the honest "Connected" status.
+  private connected = false;
+  // Bounded retry for the init shops-fetch, so a single transient failure (e.g.
+  // during a restart) no longer strands the session. Configurable for tests.
+  private readonly retryAttempts: number;
+  private readonly retryBaseDelayMs: number;
 
-  constructor(apiToken: string, shopId?: string) {
+  constructor(
+    apiToken: string,
+    shopId?: string,
+    options?: { retryAttempts?: number; retryBaseDelayMs?: number }
+  ) {
     // Store the API token
     this.apiToken = apiToken;
+    this.retryAttempts = Math.max(1, options?.retryAttempts ?? 3);
+    this.retryBaseDelayMs = options?.retryBaseDelayMs ?? 500;
 
     // Initialize the Printify SDK client
     this.client = new Printify({
@@ -39,61 +56,76 @@ export class PrintifyAPI {
     }
   }
 
-  // Initialize the API client by fetching shops
-  async initialize(): Promise<PrintifyShop[]> {
-    try {
-      console.log('Initializing Printify API client...');
-
-      // Get shops using the SDK
+  // Fetch shops with a bounded exponential-backoff retry. Throws the real error
+  // once attempts are exhausted — it NEVER fabricates data.
+  private async fetchShopsWithRetry(): Promise<PrintifyShop[]> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
       try {
-        console.log('Fetching shops from Printify API...');
+        console.log(`Fetching shops from Printify API (attempt ${attempt}/${this.retryAttempts})...`);
         const shops = await this.client.shops.list();
-        console.log('Shops response:', shops);
-
         if (shops && Array.isArray(shops)) {
-          this.shops = shops;
-          console.log(`Found ${this.shops.length} shops:`, this.shops);
-
-          // If shops are available, set the first one as default if not already set
-          if (this.shops.length > 0 && !this.shopId) {
-            this.shopId = this.shops[0].id.toString();
-            console.log(`Setting default shop ID to: ${this.shopId}`);
-
-            // Create a new client with the shop ID
-            this.client = new Printify({
-              accessToken: this.apiToken,
-              shopId: this.shopId,
-              enableLogging: true
-            });
-          }
-        } else {
-          console.warn('No shops found in the Printify API response');
+          return shops;
         }
-
-        return this.shops;
-      } catch (sdkError) {
-        console.error('Error fetching shops from Printify API:', sdkError);
-
-        // If we already have a shop ID, we can continue with that
-        if (this.shopId) {
-          console.log(`Using existing shop ID: ${this.shopId}`);
-          return this.shops;
+        // A non-array response is not a usable result — retry it like a failure.
+        throw new Error(`Unexpected shops response from Printify API: ${JSON.stringify(shops)}`);
+      } catch (error) {
+        lastError = error;
+        console.error(`Error fetching shops (attempt ${attempt}/${this.retryAttempts}):`, error);
+        if (attempt < this.retryAttempts) {
+          const delay = Math.min(this.retryBaseDelayMs * Math.pow(2, attempt - 1), MAX_RETRY_DELAY_MS);
+          console.log(`Retrying shops fetch in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
+      }
+    }
+    const detail = lastError instanceof Error ? lastError.message : String(lastError);
+    throw new Error(`Failed to fetch shops from Printify after ${this.retryAttempts} attempt(s): ${detail}`);
+  }
 
-        // Create some mock shops for testing as a fallback
-        console.log('Creating mock shops for testing...');
-        this.shops = [
-          { id: 10001, title: 'Mock Shop 1', sales_channel: 'custom_integration' },
-          { id: 10002, title: 'Mock Shop 2', sales_channel: 'storefront' }
-        ];
+  // Initialize the API client by fetching shops. On a persistent failure this
+  // surfaces the REAL error instead of fabricating mock shops (the bug that
+  // stranded sessions on 'Mock Shop 1' while still reporting "Connected: Yes").
+  async initialize(): Promise<PrintifyShop[]> {
+    console.log('Initializing Printify API client...');
 
-        // Set the first mock shop as default
+    try {
+      const shops = await this.fetchShopsWithRetry();
+      this.shops = shops;
+      this.connected = true;
+      console.log(`Found ${this.shops.length} shops`);
+
+      // If shops are available, set the first one as default if not already set.
+      if (this.shops.length > 0 && !this.shopId) {
         this.shopId = this.shops[0].id.toString();
-        console.log(`Setting mock shop ID to: ${this.shopId}`);
+        console.log(`Setting default shop ID to: ${this.shopId}`);
 
+        // The SDK requires a new client instance when changing shop ID.
+        this.client = new Printify({
+          accessToken: this.apiToken,
+          shopId: this.shopId,
+          enableLogging: true
+        });
+      }
+
+      return this.shops;
+    } catch (error) {
+      this.connected = false;
+
+      // If a real shop ID was explicitly configured, product/order calls can
+      // still work without the shop list — continue in a degraded, UNVERIFIED
+      // state. We do NOT fabricate shops and we do NOT claim to be connected.
+      if (this.shopId) {
+        console.warn(
+          `Could not fetch the Printify shop list after retries; continuing with the ` +
+          `configured shop ID ${this.shopId}. Shop list is unavailable and the connection is unverified.`
+        );
         return this.shops;
       }
-    } catch (error) {
+
+      // No shop ID and no shops: surface the real error. Callers must never be
+      // handed fake data that looks like a working connection. (fetchShopsWithRetry
+      // always throws an Error, so no re-wrapping is needed here.)
       console.error('Error initializing Printify API:', error);
       throw error;
     }
@@ -102,6 +134,13 @@ export class PrintifyAPI {
   // Get all available shops
   getAvailableShops(): PrintifyShop[] {
     return this.shops;
+  }
+
+  // Whether the last real Printify API call actually succeeded. Backs an honest
+  // "Connected" status — true only after a verified successful call, never set
+  // optimistically.
+  isConnected(): boolean {
+    return this.connected;
   }
 
   // Get the current shop ID
@@ -131,29 +170,26 @@ export class PrintifyAPI {
     console.log(`Shop ID set to: ${shopId} (created new client instance)`);
   }
 
-  // Get a list of shops
+  // Get a list of shops. Surfaces the real error on failure — it never returns
+  // fabricated/stale mock shops (which is what let a dead connection masquerade
+  // as "Connected: Yes").
   async getShops() {
     try {
       console.log('Fetching shops from Printify API...');
+      const shops = await this.client.shops.list();
+      // The call itself succeeded — the connection is real.
+      this.connected = true;
 
-      try {
-        const shops = await this.client.shops.list();
-        console.log('Shops response:', shops);
-
-        if (shops && Array.isArray(shops)) {
-          return shops;
-        } else {
-          console.warn('No shops found in the Printify API response');
-          return [];
-        }
-      } catch (sdkError) {
-        console.error('Error fetching shops from Printify API:', sdkError);
-
-        // Return the mock shops we created during initialization
-        console.log('Returning mock shops...');
-        return this.shops;
+      if (shops && Array.isArray(shops)) {
+        this.shops = shops;
+        return shops;
       }
+
+      // A non-array response is a genuine "no usable data" signal, not fake data.
+      console.warn('No shops found in the Printify API response');
+      return [];
     } catch (error) {
+      this.connected = false;
       console.error('Error fetching shops:', error);
       throw error;
     }
@@ -166,19 +202,12 @@ export class PrintifyAPI {
     }
 
     try {
-      try {
-        // Use the products.list method with pagination parameters
-        console.log(`Fetching products for shop ${this.shopId}, page ${page}, limit ${limit}`);
-        const response = await this.client.products.list({ page, limit });
-        return response;
-      } catch (sdkError) {
-        console.error('Error fetching products from Printify API:', sdkError);
-
-        // Return mock products for testing
-        console.log('Returning mock products...');
-        return { data: [] };
-      }
+      // Use the products.list method with pagination parameters
+      console.log(`Fetching products for shop ${this.shopId}, page ${page}, limit ${limit}`);
+      return await this.client.products.list({ page, limit });
     } catch (error) {
+      // Surface the real error instead of returning a fake-empty { data: [] }
+      // that masks the failure as "no products".
       console.error('Error fetching products:', error);
       throw error;
     }
