@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `PrintifyAPI.updateProduct()` no longer silently swallows a failed `getOne()`
+  when resolving variant IDs for a print area. Previously a fetch failure was
+  caught and the update continued with **zero** variant IDs — silently applying
+  the print area to nothing while looking like success. It now surfaces the real
+  error.
+
+### Changed
+- Library consumers of `createPrintifyMcpServer()` should note that
+  `initialize()` can now **reject** on a persistent Printify API failure with no
+  configured shop ID (it no longer fabricates mock shops). Wrap it in try/catch.
+
 ## [0.1.1] - 2025-05-15
 
 ### Fixed

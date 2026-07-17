@@ -9,9 +9,16 @@ import { ReplicateClient } from "./replicate-client.js";
 import dotenv from "dotenv";
 
 /**
- * Creates and configures a Printify MCP server
+ * Creates and configures a Printify MCP server.
+ *
  * @param options Configuration options
- * @returns The configured MCP server
+ * @returns An object with `server`, `printifyClient`/`replicateClient`, and an
+ *   `initialize()` method.
+ *
+ * NOTE for library consumers: `initialize()` can **reject** on a persistent
+ * Printify API failure when no shop ID is configured — it no longer fabricates
+ * mock shops. Wrap the `initialize()` call in try/catch. (The `dist/index.js`
+ * CLI entrypoint already handles this.)
  */
 export function createPrintifyMcpServer(options?: {
   printifyApiKey?: string;
