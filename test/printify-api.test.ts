@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Shared mock fns for the Printify SDK, hoisted so the vi.mock factory below can
 // reference them (vi.mock is hoisted above imports).
-const { mockShopsList, mockProductsList } = vi.hoisted(() => ({
+const { mockShopsList, mockProductsList, mockProductsGetOne, mockProductsUpdateOne } = vi.hoisted(() => ({
   mockShopsList: vi.fn(),
   mockProductsList: vi.fn(),
+  mockProductsGetOne: vi.fn(),
+  mockProductsUpdateOne: vi.fn(),
 }));
 
 // sharp is a native dep pulled in when printify-api loads; irrelevant to these tests.
@@ -15,7 +17,7 @@ vi.mock('sharp', () => ({ default: vi.fn() }));
 vi.mock('printify-sdk-js', () => ({
   default: class MockPrintify {
     shops = { list: mockShopsList };
-    products = { list: mockProductsList, getOne: vi.fn() };
+    products = { list: mockProductsList, getOne: mockProductsGetOne, updateOne: mockProductsUpdateOne };
     constructor(_opts: unknown) {}
   },
 }));
@@ -113,5 +115,27 @@ describe('getPrintifyStatus — Connected reflects a real successful call (regre
     expect(text).toContain('Connected: Yes');
     expect(text).toContain('Happy Thursday');
     expect(api.isConnected()).toBe(true);
+  });
+});
+
+describe('PrintifyAPI.updateProduct — surfaces a getOne() failure instead of applying a print area to zero variants', () => {
+  beforeEach(() => {
+    mockProductsGetOne.mockReset();
+    mockProductsUpdateOne.mockReset();
+  });
+
+  it('throws when the variant-id lookup fails, and does NOT push an empty-variant print area', async () => {
+    const api = new PrintifyAPI('test_token', '1836947', { retryAttempts: 1, retryBaseDelayMs: 0 });
+    mockProductsGetOne.mockRejectedValue(new Error('500 fetching product'));
+
+    // print_areas provided, no variants in the update → forces the getOne lookup.
+    await expect(
+      api.updateProduct('prod-1', {
+        print_areas: { front: [{ id: 'img-1', x: 0, y: 0, scale: 1, angle: 0 }] },
+      })
+    ).rejects.toThrow();
+
+    // The bug: it used to swallow the error and call updateOne with variant_ids: [].
+    expect(mockProductsUpdateOne).not.toHaveBeenCalled();
   });
 });

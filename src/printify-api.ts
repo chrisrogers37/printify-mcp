@@ -344,16 +344,14 @@ export class PrintifyAPI {
             // Use the variants from the update data
             variantIds = formattedData.variants.map((v: any) => parseInt(v.id || v.variantId));
           } else {
-            // Get the current product to get its variant IDs
-            try {
-              const currentProduct = await this.client.products.getOne(productId);
-              variantIds = currentProduct.variants
-                .filter((v: any) => v.is_enabled)
-                .map((v: any) => v.id);
-            } catch (error) {
-              console.error(`Error fetching current product ${productId}:`, error);
-              // Continue with empty variant IDs
-            }
+            // Get the current product to resolve its variant IDs. If this fails
+            // we cannot map the print area to the right variants — surface the
+            // real error instead of silently continuing with zero variants,
+            // which would apply the print area to nothing and look like success.
+            const currentProduct = await this.client.products.getOne(productId);
+            variantIds = currentProduct.variants
+              .filter((v: any) => v.is_enabled)
+              .map((v: any) => v.id);
           }
 
           // Create a print area entry with all variants
