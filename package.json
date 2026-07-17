@@ -27,7 +27,8 @@
     "copy-docs": "node -e \"const fs = require('fs'); const path = require('path'); if (!fs.existsSync('dist/docs')) fs.mkdirSync('dist/docs', { recursive: true }); fs.readdirSync('src/docs').forEach(file => fs.copyFileSync(path.join('src/docs', file), path.join('dist/docs', file)));\"",
     "start": "node dist/index.js",
     "dev": "tsc -w & node --watch dist/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublishOnly": "npm run build",
     "lint": "eslint src --ext .ts",
     "clean": "rimraf dist",
@@ -70,6 +71,7 @@
     "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.57.1",
     "rimraf": "^5.0.10",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.10"
   }
 }

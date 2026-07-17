@@ -60,7 +60,7 @@ This method:
 2. Stores the shops in the `shops` property
 3. Sets the first shop as the default if no shop ID was provided
 4. Creates a new client with the shop ID
-5. Falls back to mock shops if the API call fails
+5. Retries the fetch with bounded exponential backoff on a transient failure; if it still fails it throws the real error and **never fabricates mock shops**. (If a shop ID was explicitly configured, it continues in a degraded, unverified state — `isConnected()` stays `false` — instead of throwing.)
 
 #### getAvailableShops
 

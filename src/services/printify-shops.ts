@@ -14,8 +14,16 @@ export async function getPrintifyStatus(printifyClient: PrintifyAPI) {
       throw new Error('Printify API client is not initialized. The PRINTIFY_API_KEY environment variable may not be set.');
     }
     
-    // Get shops and current shop
-    const shops = await printifyClient.getShops();
+    // A status check must report reality, not throw: attempt a real call and
+    // derive Connected from its actual outcome.
+    let shops: any[] = [];
+    let connectionError: unknown = null;
+    try {
+      shops = await printifyClient.getShops();
+    } catch (error) {
+      connectionError = error;
+    }
+    const connected = printifyClient.isConnected();
     const currentShop = printifyClient.getCurrentShop();
     
     return {
@@ -26,9 +34,11 @@ export async function getPrintifyStatus(printifyClient: PrintifyAPI) {
         content: [{
           type: "text",
           text: `Printify API Status:\n\n` +
-                `Connected: Yes\n` +
-                `Available Shops: ${shops.length}\n` +
-                `Current Shop: ${currentShop ? `${currentShop.title} (ID: ${currentShop.id})` : 'None'}`
+                `Connected: ${connected ? 'Yes' : 'No'}\n` +
+                (connected
+                  ? `Available Shops: ${shops.length}\n` +
+                    `Current Shop: ${currentShop ? `${currentShop.title} (ID: ${currentShop.id})` : 'None'}`
+                  : `Reason: ${connectionError instanceof Error ? connectionError.message : 'the Printify API could not be reached'}`)
         }]
       }
     };
